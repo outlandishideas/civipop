@@ -1,5 +1,5 @@
 {
-    "name": "outlandish/civipop",
+    "name": "outlandishideas/civipop",
     "description": "A library for populating a CiviCRM site with fake data",
     "type": "library",
     "require": {
