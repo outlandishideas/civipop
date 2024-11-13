@@ -18,7 +18,11 @@ $c['app']->main('file', function(string $file, SymfonyStyle $io, OutputInterface
   $startTime = time();
 
   try {
-    \Civi\Pop\Connection::connect('php -d memory_limit=-1 `which cv` pipe vjt');
+    // determine where cv lives first
+    $cv = getCvExecutable();
+
+    // check that cv works (using Pipe command: https://github.com/civicrm/cv/blob/master/src/Command/PipeCommand.php)
+    \Civi\Pop\Connection::connect("php -d memory_limit=-1 $cv pipe vjt");
   }
   catch (\Throwable $t) {
     $io->error([
@@ -61,3 +65,17 @@ $c['app']->main('file', function(string $file, SymfonyStyle $io, OutputInterface
   $output->write(sprintf("<comment>Completed in %dm %ds\n</comment>", ($endTime - $startTime) / 60, ($endTime - $startTime) % 60));
 
 });
+
+function getCvExecutable()
+{
+    $output = null;
+    $retval = null;
+
+    // 'which' is called 'where' on windows
+    $which = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? 'where' : 'which';
+    exec($which . ' cv', $output, $retval);
+    if ($retval !== 0 || empty($output[0])) {
+        throw new \RuntimeException('cv command not located');
+    }
+    return $output[0];
+}

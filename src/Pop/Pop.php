@@ -42,8 +42,10 @@ class Pop {
     // Get available entities (pretending that Individuals, Organisations and
     // Households are also entities)
 
+    $availableEntities = Connection::api4('Entity', 'get', ['select' => ['name']]);
+    $availableEntities = array_column($availableEntities, 'name');
     $this->availableEntities = array_merge(
-      Connection::api3('Entity', 'get')['values'],
+      $availableEntities,
       array('Individual', 'Household', 'Organization')
     );
 
