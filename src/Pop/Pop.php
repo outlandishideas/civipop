@@ -22,6 +22,8 @@ class Pop {
   // The fields we can populate for each type of entity
   var $availableFields  = array();
 
+  var $requiredFields  = array();
+
   function __construct($output){
     // Initialise output interface
     $this->output = $output;
@@ -42,7 +44,7 @@ class Pop {
     // Get available entities (pretending that Individuals, Organisations and
     // Households are also entities)
 
-    $availableEntities = Connection::api4('Entity', 'get', ['select' => ['name']]);
+    $availableEntities = Connection::api4('Entity', 'get', ['checkPermissions' => false, 'select' => ['name']]);
     $availableEntities = array_column($availableEntities, 'name');
     $this->availableEntities = array_merge(
       $availableEntities,
@@ -156,8 +158,12 @@ class Pop {
 
   function backfill($definition) {
 
-    // get defaults for this entity, if they exist
-    $entityDefault = Yaml::parseFile("{$this->entityDefaultDir}{$definition['entity']}.yml");
+    try {
+      // get defaults for this entity, if they exist
+      $entityDefault = Yaml::parseFile("{$this->entityDefaultDir}{$definition['entity']}.yml");
+    } catch (\Exception $err) {
+      $entityDefault = [];
+    }
 
     // backfill with default fields for this entity
     if(isset($entityDefault['fields'])){
@@ -189,9 +195,9 @@ class Pop {
   }
 
   function getAvailableFields($entity){
-
     if(!isset($this->availableFields[$entity])){
-      $this->availableFields[$entity] = Connection::api3($entity, 'getfields', array('api_action'=> 'create'))['values'];
+      $fields = Connection::api4($entity, 'getFields', ['checkPermissions' => false, 'action'=> 'create']);
+      $this->availableFields[$entity] = $fields;
     }
     return $this->availableFields[$entity];
   }
@@ -200,7 +206,7 @@ class Pop {
     if(!isset($this->requiredFields[$entity])){
       $this->requiredFields[$entity] = [];
       foreach($this->getAvailableFields($entity) as $availableField){
-        if($availableField['api.required']){
+        if(!empty($availableField['required'])) {
           $this->requiredFields[$entity][$availableField['name']] = $availableField;
         }
       }
@@ -274,25 +280,26 @@ class Pop {
     // add any required fields using sensible defaults
     foreach($this->getRequiredFields($entity) as $requiredFieldName => $requiredFieldDef){
       if(!isset($fields[$requiredFieldName])){
-        if(isset($requiredFieldDef['FKApiName'])){
-          $fields[$requiredFieldName] = $this->entityStore->getRandomId($requiredFieldDef['FKApiName']);
+        if(isset($requiredFieldDef['fk_entity'])){
+          $fields[$requiredFieldName] = $this->entityStore->getRandomId($requiredFieldDef['fk_entity']);
         }elseif(isset($requiredFieldDef['pseudoconstant'])){
           $fields[$requiredFieldName] = $this->optionStore->getRandomId($entity, $requiredFieldDef['name']);
         }
       }
     }
     try{
-      $result = Connection::api3($entity, 'create', $fields);
-    }catch(\CiviCRM_API3_Exception $e){
+//        echo 'creating ' . $entity . ': ' . json_encode($fields);
+      $result = Connection::api4($entity, 'create', ['checkPermissions' => false, 'values' => $fields]);
+    }catch(\Exception $e){
       $this->recordFailure($entity, $fields, $e->getMessage());
       return;
     }
 
     if(!$result['is_error']){
       $this->recordSuccess($entity, $result['id']);
-      return array('entity' => $entity, 'id' => $result['id']);
       //add to the random entity register so they can be selected in future
       $this->entityStore->add($entity, $result['id']);
+      return array('entity' => $entity, 'id' => $result['id']);
     }else{
       $this->recordFailure($entity, $fields, $result['error_message']);
     }
@@ -381,8 +388,9 @@ class Pop {
       }
       $x++;
     }
+//    print_r($this->summary);
     foreach($this->summary as $entity => $stats){
-      if($stats['first_id'] && $stats['first_id']==$stats['last_id']){
+      if(!empty($stats['first_id']) && $stats['first_id']==$stats['last_id']){
         $this->log("\033[K<fg=green>{$entity}: {$stats['count']} ({$stats['first_id']})</>");
       }elseif($stats['first_id'] < $stats['last_id']){
         $this->log("\033[K<fg=green>{$entity}: {$stats['count']} ({$stats['first_id']} to {$stats['last_id']})</>");

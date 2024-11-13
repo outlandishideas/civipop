@@ -11,10 +11,11 @@ class OptionStore {
 
   function getRandomId($entity, $field){
     if(!isset($this->store[$entity][$field])){
-      $this->store[$entity][$field] = Connection::api3($entity, 'getoptions', array(
+      $options = Connection::api4($entity, 'getoptions', [
         'sequential' => 1,
         'field' => $field,
-      ))['values'];
+      ]);
+      $this->store[$entity][$field] = $options['values'];
     }
     return $this->store[$entity][$field][array_rand($this->store[$entity][$field])]['key'];
   }
